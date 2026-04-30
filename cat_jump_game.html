@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>跳跃的黑色猫</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #f8f8f5;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<div id="sketch-holder"></div>
+
+<script>
+let cat;
+let platforms = [];
+let cameraY = 0;
+let dragStart;
+let isDragging = false;
+let groundY;
+let controlH = 0;   // 底部操作区高度
+let titleH = 0;     // 顶部标题高度
+
+function setup() {
+  let w = window.innerWidth;
+  let h = window.innerHeight;
+  let cnv = createCanvas(w, h);
+  cnv.parent('sketch-holder');
+
+  // 布局参数
+  titleH   = Math.max(36, h * 0.06);
+  controlH = Math.max(80, h * 0.14);
+
+  // 鼠标事件
+  cnv.elt.addEventListener('mousedown', onDragStart);
+  cnv.elt.addEventListener('mousemove', onDragMove);
+  cnv.elt.addEventListener('mouseup', onDragEnd);
+
+  // 触摸事件
+  cnv.elt.addEventListener('touchstart', onTouchStart, { passive: false });
+  cnv.elt.addEventListener('touchmove', onTouchMove, { passive: false });
+  cnv.elt.addEventListener('touchend', onTouchEnd, { passive: false });
+
+  // 窗口大小变化时重新适配
+  window.addEventListener('resize', () => {
+    resizeCanvas(window.innerWidth, window.innerHeight);
+    titleH   = Math.max(36, height * 0.06);
+    controlH = Math.max(80, height * 0.14);
+  });
+
+  groundY = height - controlH - 10;
+  cat = new Cat();
+
+  for (let i = 1; i <= 30; i++) {
+    addPlatform(groundY - i * 140);
+  }
+}
+
+// ── 统一坐标转换 ────────────────────────────────
+function getCanvasPos(e) {
+  let r = document.getElementById('defaultCanvas0').getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function onDragStart(e) {
+  if (isInControlArea()) return;
+  let p = getCanvasPos(e);
+  if (!cat.isJumping) {
+    dragStart = createVector(p.x, p.y);
+    isDragging = true;
+  }
+}
+function onDragMove(e) {
+  let p = getCanvasPos(e);
+  mouseX = p.x; mouseY = p.y;
+}
+function onDragEnd(e) {
+  if (!isDragging) return;
+  let force = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
+  force.limit(75);
+  cat.jump(force.mult(0.4));
+  isDragging = false;
+}
+
+function onTouchStart(e) {
+  e.preventDefault();
+  if (isInControlArea()) return;
+  if (!cat.isJumping) {
+    let t = e.touches[0], p = getCanvasPos(t);
+    dragStart = createVector(p.x, p.y);
+    mouseX = p.x; mouseY = p.y;
+    isDragging = true;
+  }
+}
+function onTouchMove(e) { e.preventDefault(); let p = getCanvasPos(e.touches[0]); mouseX = p.x; mouseY = p.y; }
+function onTouchEnd(e) { e.preventDefault(); onDragEnd(); }
+
+function isInControlArea() {
+  return mouseY > height - controlH;
+}
+
+// ── 台阶 ──────────────────────────────────────────
+function addPlatform(yValue) { platforms.push(new Platform(yValue)); }
+
+class Platform {
+  constructor(y) {
+    this.x = random(width * 0.08, width * 0.75);
+    this.y = y;
+    this.w = max(60, width * 0.22);  // 按屏幕宽度自适应
+  }
+  display() {
+    fill(200); noStroke();
+    rect(this.x, this.y, this.w, 10, 5);
+  }
+}
+
+// ── 猫咪（尺寸自适应）──────────────────────────────
+class Cat {
+  constructor() { this.reset(); }
+  reset() {
+    this.pos = createVector(width / 2, groundY - 18);
+    this.vel = createVector(0, 0);
+    this.gravity = 0.5;
+    this.isJumping = false;
+    this.angle = 0;
+  }
+  jump(f) { this.vel = f; this.isJumping = true; }
+  update() {
+    if (this.isJumping) {
+      this.vel.y += this.gravity;
+      this.pos.add(this.vel);
+      this.angle = this.vel.heading() + HALF_PI;
+
+      let margin = max(12, width * 0.03);
+      if (this.pos.x < margin || this.pos.x > width - margin) {
+        this.vel.x *= -0.8;
+        this.pos.x = constrain(this.pos.x, margin, width - margin);
+      }
+
+      // 地面碰撞
+      if (this.pos.y >= groundY - 18) {
+        this.pos.y = groundY - 18;
+        this.vel.set(0, 0);
+        this.isJumping = false;
+        this.angle = 0;
+      }
+
+      // 台阶碰撞：找正下方最近的台阶
+      if (this.vel.y > 0) {
+        let best = null;
+        for (let p of platforms) {
+          if (p.y > this.pos.y &&
+              this.pos.x > p.x - 5 && this.pos.x < p.x + p.w + 5) {
+            if (!best || p.y < best.y) best = p;
+          }
+        }
+        if (best && this.pos.y >= best.y - 20) {
+          this.pos.y = best.y;
+          this.vel.set(0, 0);
+          this.isJumping = false;
+          this.angle = 0;
+        }
+      }
+    }
+  }
+  display() {
+    push();
+    translate(this.pos.x, this.pos.y);
+    rotate(this.angle);
+    fill(40); noStroke();
+    rectMode(CENTER);
+    rect(0, -10, 32, 28, 8);
+    triangle(-14, -20, -10, -32, -4, -20);
+    triangle(14, -20, 10, -32, 4, -20);
+    fill(255); ellipse(-7, -12, 3, 3); ellipse(7, -12, 3, 3);
+    pop();
+  }
+}
+
+// ── 主循环 ────────────────────────────────────────
+function draw() {
+  background(248, 248, 245);
+
+  // 摄像机跟随
+  let thresholdTop = height * 0.35;
+  let thresholdBottom = height * 0.85;
+
+  if (cat.pos.y < cameraY + thresholdTop)
+    cameraY = lerp(cameraY, cat.pos.y - thresholdTop, 0.1);
+  else if (cat.pos.y > cameraY + thresholdBottom)
+    cameraY = lerp(cameraY, cat.pos.y - thresholdBottom, 0.1);
+
+  cameraY = min(cameraY, 0);
+
+  push();
+  translate(0, -cameraY);
+
+  drawGround();
+
+  for (let p of platforms) p.display();
+
+  // 动态补路
+  let highestP = platforms[platforms.length - 1].y;
+  if (cat.pos.y < highestP + height) {
+    for (let i = 1; i <= 5; i++) addPlatform(highestP - i * 140);
+  }
+
+  if (isDragging && !cat.isJumping) drawTrajectory();
+
+  cat.update();
+  cat.display();
+  pop();
+
+  drawTitleBar();
+  drawUI();
+  drawControlArea();
+}
+
+function drawGround() {
+  push();
+  noStroke(); fill(210, 205, 200);
+  rect(0, groundY, width, 5000);
+  stroke(180);
+  for (let i = 0; i < width; i += 30) {
+    line(i, groundY, i + 15, groundY + 15);
+    line(i + 15, groundY, i, groundY + 15);
+  }
+  pop();
+}
+
+function drawTrajectory() {
+  let force = p5.Vector.sub(dragStart, createVector(mouseX, mouseY)).limit(75).mult(0.4);
+  push();
+  stroke(160, 130);
+  drawingContext.setLineDash([5, 5]);
+  let tPos = cat.pos.copy(), tVel = force.copy();
+  for (let i = 0; i < 20; i++) {
+    let nextPos = p5.Vector.add(tPos, tVel);
+    line(tPos.x, tPos.y, nextPos.x, nextPos.y);
+    tPos = nextPos; tVel.y += 0.5;
+  }
+  pop();
+}
+
+// ── 顶部标题栏 ────────────────────────────────────
+function drawTitleBar() {
+  fill(240, 235, 230);
+  noStroke();
+  rect(0, 0, width, titleH);
+  fill(50);
+  textAlign(CENTER, CENTER);
+  textSize(Math.min(titleH * 0.48, 20));
+  textFont("PingFang SC, Microsoft YaHei, sans-serif");
+  text("jumpcattttt", width / 2, titleH / 2);
+}
+
+// ── 高度 UI ──────────────────────────────────────
+function drawUI() {
+  let hVal = floor(max(0, -cat.pos.y + groundY) / 10);
+  fill(120); noStroke(); textAlign(RIGHT, CENTER);
+  textSize(min(width * 0.042, 16));
+  text("高度 " + hVal + " m", width - 16, titleH / 2);
+}
+
+// ── 底部操作区 ────────────────────────────────────
+function drawControlArea() {
+  push();
+  let cy = height - controlH / 2;
+
+  // 分隔线
+  stroke(200); strokeWeight(1);
+  line(10, height - controlH - 3, width - 10, height - controlH - 3);
+
+  // 背景色带
+  noStroke();
+  fill(236, 232, 228);
+  rect(0, height - controlH, width, controlH);
+
+  // 提示文字
+  fill(140);
+  textAlign(CENTER, CENTER);
+  textSize(min(controlH * 0.28, 15));
+  textFont("PingFang SC, sans-serif");
+
+  if (!cat.isJumping) {
+    // 蓄力提示
+    fill(100);
+    text("按住屏幕拖拽蓄力 → 松开起跳", width / 2, cy - 6);
+
+    // 力度条背景
+    let barW = min(width * 0.65, 260);
+    let barH = min(controlH * 0.22, 12);
+    let bx = width / 2 - barW / 2;
+    let by = cy + controlH * 0.18;
+
+    fill(220);
+    rect(bx, by, barW, barH, barH / 2);
+
+    // 如果正在拖拽，显示力度
+    if (isDragging && dragStart) {
+      let dist = p5.Vector.dist(dragStart, createVector(mouseX, mouseY));
+      let power = constrain(dist / 75, 0, 1);
+      let r = power;
+      let g = 1 - power;
+      fill(r * 200 + 55, g * 200 + 55, 90);
+      rect(bx, by, barW * power, barH, barH / 2);
+    }
+  } else {
+    fill(150);
+    text("跳跃中...", width / 2, cy);
+  }
+
+  pop();
+}
+
+</script>
+</body>
+</html>

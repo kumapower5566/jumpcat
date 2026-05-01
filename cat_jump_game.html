@@ -37,6 +37,36 @@ const SKINS = [
 ];
 let unlockedSkins=[0], currentSkin=0, showSkinPanel=false;
 
+// ── 存档系统 ──────────────────────────────────
+const SAVE_KEY='jumpcat_save_v1';
+function saveGame(){
+  let data={
+    h:getCurrentHeight(),
+    skins:unlockedSkins.slice(),
+    skin:currentSkin,
+    targets:TARGETS.map(t=>t.unlocked)
+  };
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify(data));}catch(e){}
+}
+function loadGame(){
+  try{
+    let raw=localStorage.getItem(SAVE_KEY);
+    if(!raw)return null;
+    return JSON.parse(raw);
+  }catch(e){return null;}
+}
+function restoreProgress(save){
+  if(!save||save.h<0)return false;
+  // 恢复皮肤解锁
+  for(let i of save.skins)if(!unlockedSkins.includes(i))unlockedSkins.push(i);
+  currentSkin=constrain(save.skin,0,SKINS.length-1);
+  // 恢复里程碑
+  for(let i=0;i<TARGETS.length;i++)if(save.targets[i])TARGETS[i].unlocked=true;
+  // 传送到保存高度附近
+  teleportTo(save.h);
+  return true;
+}
+
 function setup(){
   let w=window.innerWidth,h=window.innerHeight,cnv=createCanvas(w,h);
   cnv.parent('sketch-holder');
@@ -54,6 +84,9 @@ function setup(){
   });
   groundY=height-controlH-10; cat=new Cat();
   for(let i=1;i<=30;i++) addPlatform(groundY-i*140);
+  // 尝试加载存档
+  let save=loadGame();
+  if(save&&save.h>0)restoreProgress(save);
 }
 
 function getCanvasPos(e){
@@ -140,7 +173,7 @@ class Platform{
 }
 
 class Cat{
-  constructor(){this.reset();}
+  constructor(){this.reset();this._saveTimer=0;}
   reset(){this.pos=createVector(width/2,groundY-18);this.vel=createVector(0,0);this.gravity=0.5;this.isJumping=false;this.angle=0;}
   jump(f){this.vel=f;this.isJumping=true;}
   update(){
@@ -148,13 +181,17 @@ class Cat{
       this.vel.y+=this.gravity;this.pos.add(this.vel);this.angle=this.vel.heading()+HALF_PI;
       let m=max(12,width*0.03);
       if(this.pos.x<m||this.pos.x>width-m){this.vel.x*=-0.8;this.pos.x=constrain(this.pos.x,m,width-m);}
+      let wasJumping=this.isJumping;
       if(this.pos.y>=groundY-18){this.pos.y=groundY-18;this.vel.set(0,0);this.isJumping=false;this.angle=0;}
       if(this.vel.y>0){
         let best=null;
         for(let p of platforms){if(p.y>this.pos.y&&this.pos.x>p.x-5&&this.pos.x<p.x+p.w+5){if(!best||p.y<best.y)best=p;}}
         if(best&&this.pos.y>=best.y-20){this.pos.y=best.y;this.vel.set(0,0);this.isJumping=false;this.angle=0;}
       }
+      // 落地时自动保存（节流：最多每60帧保存一次）
+      if(wasJumping&&!this.isJumping){this._saveTimer=1;}
     }
+    if(this._saveTimer>0){this._saveTimer++;if(this._saveTimer===60){saveGame();this._saveTimer=0;}}
   }
   display(){
     let s=SKINS[currentSkin];
@@ -319,6 +356,10 @@ function drawTitleBar(){
 function drawUI(){
   let hv=getCurrentHeight();fill(120);noStroke();textAlign(RIGHT,CENTER);textSize(min(width*0.042,16));
   text("高度 "+hv+" m",width-80,titleH/2);
+  // 存档指示
+  let saveIcon=cat._saveTimer>0&&cat._saveTimer<40?'💾':'☁';
+  fill(cat._saveTimer>0?[100,180,100]:[180]);noStroke();textAlign(RIGHT,CENTER);textSize(10);
+  text(saveIcon,width-12,titleH/2);
   let nt=null;
   for(let t of TARGETS){if(!t.unlocked){nt=t;break;}}
   if(nt){fill(150);textSize(min(width*0.032,12));text("下一站: "+nt.label,width-80,titleH/2+16);}

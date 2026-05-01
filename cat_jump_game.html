@@ -3,327 +3,441 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>跳跃的黑色猫</title>
+  <title>jumpcattttt</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100%; height: 100%;
-      overflow: hidden;
-      background: #f8f8f5;
-      touch-action: none;
-      -webkit-touch-callout: none;
-      -webkit-user-select: none;
-      user-select: none;
-    }
-    canvas { display: block; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body { width:100%; height:100%; overflow:hidden; background:#f8f8f5;
+      touch-action:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+    canvas { display:block; }
   </style>
 </head>
 <body>
 <div id="sketch-holder"></div>
 
 <script>
-let cat;
-let platforms = [];
-let cameraY = 0;
-let dragStart;
-let isDragging = false;
-let groundY;
-let controlH = 0;   // 底部操作区高度
-let titleH = 0;     // 顶部标题高度
+let cat, platforms=[], cameraY=0, dragStart, isDragging=false, groundY, controlH=0, titleH=0;
 
-function setup() {
-  let w = window.innerWidth;
-  let h = window.innerHeight;
-  let cnv = createCanvas(w, h);
+// ── 里程碑目标线 ─────────────────────────────
+const TARGETS = [
+  { meters:1000, color:[255,107,107], label:'1000m', unlocked:false },
+  { meters:3000, color:[78,205,196], label:'3000m', unlocked:false },
+  { meters:6000, color:[255,230,109],label:'6000m', unlocked:false },
+  { meters:10000,color:[168,85,247], label:'10000m',unlocked:false }
+];
+let notifiedTargets = [];
+
+// ── 皮肤系统 ─────────────────────────────────
+const SKINS = [
+  {name:'黑猫',body:[40,40,40],ear:[60,60,60],eye:[255,255,255]},
+  {name:'恶魔猫',body:[180,40,40],ear:[180,40,40],eye:[255,60,60]},
+  {name:'天使猫',body:[240,240,250],ear:[240,240,250],eye:[80,140,255]},
+  {name:'草莓猫',body:[200,255,210],ear:[180,235,190],eye:[255,100,130]},
+  {name:'魔法师猫',body:[60,90,180],ear:[50,75,160],eye:[255,220,80]}
+];
+let unlockedSkins=[0], currentSkin=0, showSkinPanel=false;
+
+function setup(){
+  let w=window.innerWidth,h=window.innerHeight,cnv=createCanvas(w,h);
   cnv.parent('sketch-holder');
-
-  // 布局参数
-  titleH   = Math.max(36, h * 0.06);
-  controlH = Math.max(80, h * 0.14);
-
-  // 鼠标事件
-  cnv.elt.addEventListener('mousedown', onDragStart);
-  cnv.elt.addEventListener('mousemove', onDragMove);
-  cnv.elt.addEventListener('mouseup', onDragEnd);
-
-  // 触摸事件
-  cnv.elt.addEventListener('touchstart', onTouchStart, { passive: false });
-  cnv.elt.addEventListener('touchmove', onTouchMove, { passive: false });
-  cnv.elt.addEventListener('touchend', onTouchEnd, { passive: false });
-
-  // 窗口大小变化时重新适配
-  window.addEventListener('resize', () => {
-    resizeCanvas(window.innerWidth, window.innerHeight);
-    titleH   = Math.max(36, height * 0.06);
-    controlH = Math.max(80, height * 0.14);
+  textFont("PingFang SC,Microsoft YaHei,sans-serif");
+  titleH=Math.max(36,h*0.06); controlH=Math.max(80,h*0.14);
+  cnv.elt.addEventListener('mousedown',onDragStart);
+  cnv.elt.addEventListener('mousemove',onDragMove);
+  cnv.elt.addEventListener('mouseup',onDragEnd);
+  cnv.elt.addEventListener('touchstart',onTouchStart,{passive:false});
+  cnv.elt.addEventListener('touchmove',onTouchMove,{passive:false});
+  cnv.elt.addEventListener('touchend',onTouchEnd,{passive:false});
+  window.addEventListener('resize',()=>{
+    resizeCanvas(window.innerWidth,window.innerHeight);
+    titleH=Math.max(36,height*0.06); controlH=Math.max(80,height*0.14);
   });
+  groundY=height-controlH-10; cat=new Cat();
+  for(let i=1;i<=30;i++) addPlatform(groundY-i*140);
+}
 
-  groundY = height - controlH - 10;
-  cat = new Cat();
+function getCanvasPos(e){
+  let r=document.getElementById('defaultCanvas0').getBoundingClientRect();
+  return{x:e.clientX-r.left,y:e.clientY-r.top};
+}
+function hitBtn(px,py,bx,by,bw,bh){return px>=bx&&px<=bx+bw&&py>=by&&py<=by+bh;}
 
-  for (let i = 1; i <= 30; i++) {
-    addPlatform(groundY - i * 140);
+// ── 面板点击处理 ──────────────────────────────
+function handleSkinPanelClick(px,py){
+  if(!showSkinPanel)return false;
+  let pw=Math.min(width*0.88,340),ph=Math.min(height*0.55,360);
+  let px0=(width-pw)/2,py0=(height-ph)/2;
+  if(hitBtn(px,py,px0+pw-38,py0+10,28,28)){showSkinPanel=false;return true;}
+  let cols=Math.min(3,Math.floor(pw/90)),iw=80,ih=90,gx=(pw-cols*iw)/(cols+1),gy=14,sy=py0+55;
+  for(let i=0;i<SKINS.length;i++){
+    let ix=px0+gx+(i%cols)*(iw+gx),iy=sy+Math.floor(i/cols)*(ih+gy);
+    if(hitBtn(px,py,ix,iy,iw,ih)){if(unlockedSkins.includes(i))currentSkin=i;return true;}
+  }
+  if(px<px0||px>px0+pw||py<py0||py>py0+ph)showSkinPanel=false;
+  return true;
+}
+
+// ── 传送功能 ──────────────────────────────────
+function teleportTo(meters){
+  cat.pos.y=groundY-meters*10; cat.pos.x=width/2;
+  cat.vel.set(0,0); cat.isJumping=false; cat.angle=0;
+  cameraY=min(cat.pos.y-height*0.35,0);
+  // 补台阶
+  while(platforms[platforms.length-1].y > cat.pos.y - height*0.5)
+    addPlatform(platforms[platforms.length-1].y - 140);
+  // 触发解锁
+  for(let i=0;i<TARGETS.length;i++){
+    if(meters>=TARGETS[i].meters&&!TARGETS[i].unlocked){
+      TARGETS[i].unlocked=true;
+      if(!unlockedSkins.includes(i+1))unlockedSkins.push(i+1);
+      currentSkin=i+1;
+      notifiedTargets.push({index:i,timer:180});
+    }
   }
 }
 
-// ── 统一坐标转换 ────────────────────────────────
-function getCanvasPos(e) {
-  let r = document.getElementById('defaultCanvas0').getBoundingClientRect();
-  return { x: e.clientX - r.left, y: e.clientY - r.top };
+// ── 事件处理 ──────────────────────────────────
+function onDragStart(e){
+  let p=getCanvasPos(e);
+  if(handleSkinPanelClick(p.x,p.y))return;
+  if(handleTeleportPanelClick(p.x,p.y))return;
+
+  let sw=Math.min(60,width*0.16),sh=max(22,titleH*0.55),sx=width-sw-10;
+  if(hitBtn(p.x,p.y,sx,(titleH-sh)/2,sw,sh)){showSkinPanel=!showSkinPanel;showTeleportPanel=false;return;}
+
+
+  if(isInControlArea(p.y))return;
+  if(!cat.isJumping){dragStart=createVector(p.x,p.y);isDragging=true;}
+}
+function onDragMove(e){let p=getCanvasPos(e);mouseX=p.x;mouseY=p.y;}
+function onDragEnd(e){
+  if(!isDragging)return;
+  let force=p5.Vector.sub(dragStart,createVector(mouseX,mouseY)).limit(75).mult(0.4);
+  cat.jump(force);isDragging=false;
 }
 
-function onDragStart(e) {
-  if (isInControlArea()) return;
-  let p = getCanvasPos(e);
-  if (!cat.isJumping) {
-    dragStart = createVector(p.x, p.y);
-    isDragging = true;
-  }
-}
-function onDragMove(e) {
-  let p = getCanvasPos(e);
-  mouseX = p.x; mouseY = p.y;
-}
-function onDragEnd(e) {
-  if (!isDragging) return;
-  let force = p5.Vector.sub(dragStart, createVector(mouseX, mouseY));
-  force.limit(75);
-  cat.jump(force.mult(0.4));
-  isDragging = false;
-}
-
-function onTouchStart(e) {
+function onTouchStart(e){
   e.preventDefault();
-  if (isInControlArea()) return;
-  if (!cat.isJumping) {
-    let t = e.touches[0], p = getCanvasPos(t);
-    dragStart = createVector(p.x, p.y);
-    mouseX = p.x; mouseY = p.y;
-    isDragging = true;
+  if(e.touches.length>0){
+    let p=getCanvasPos(e.touches[0]);mouseX=p.x;mouseY=p.y;
+    if(handleSkinPanelClick(p.x,p.y))return;
+    if(handleTeleportPanelClick(p.x,p.y))return;
+
+    let sw=Math.min(60,width*0.16),sh=Math.max(22,titleH*0.55),sx=width-sw-10;
+    if(hitBtn(p.x,p.y,sx,(titleH-sh)/2,sw,sh)){showSkinPanel=!showSkinPanel;showTeleportPanel=false;return;}
+
+    if(isInControlArea(p.y))return;
+    if(!cat.isJumping){dragStart=createVector(p.x,p.y);isDragging=true;}
   }
 }
-function onTouchMove(e) { e.preventDefault(); let p = getCanvasPos(e.touches[0]); mouseX = p.x; mouseY = p.y; }
-function onTouchEnd(e) { e.preventDefault(); onDragEnd(); }
+function onTouchMove(e){e.preventDefault();if(e.touches.length>0){let p=getCanvasPos(e.touches[0]);mouseX=p.x;mouseY=p.y;}}
+function onTouchEnd(e){e.preventDefault();onDragEnd();}
+function isInControlArea(my){return(my!==undefined?my:mouseY)>height-controlH;}
 
-function isInControlArea() {
-  return mouseY > height - controlH;
+// ── 台阶 & 猫咪 ───────────────────────────────
+function addPlatform(y){platforms.push(new Platform(y));}
+
+class Platform{
+  constructor(y){this.x=random(width*0.08,width*0.75);this.y=y;this.w=max(60,width*0.22);}
+  display(){fill(200);noStroke();rect(this.x,this.y,this.w,10,5);}
 }
 
-// ── 台阶 ──────────────────────────────────────────
-function addPlatform(yValue) { platforms.push(new Platform(yValue)); }
-
-class Platform {
-  constructor(y) {
-    this.x = random(width * 0.08, width * 0.75);
-    this.y = y;
-    this.w = max(60, width * 0.22);  // 按屏幕宽度自适应
-  }
-  display() {
-    fill(200); noStroke();
-    rect(this.x, this.y, this.w, 10, 5);
-  }
-}
-
-// ── 猫咪（尺寸自适应）──────────────────────────────
-class Cat {
-  constructor() { this.reset(); }
-  reset() {
-    this.pos = createVector(width / 2, groundY - 18);
-    this.vel = createVector(0, 0);
-    this.gravity = 0.5;
-    this.isJumping = false;
-    this.angle = 0;
-  }
-  jump(f) { this.vel = f; this.isJumping = true; }
-  update() {
-    if (this.isJumping) {
-      this.vel.y += this.gravity;
-      this.pos.add(this.vel);
-      this.angle = this.vel.heading() + HALF_PI;
-
-      let margin = max(12, width * 0.03);
-      if (this.pos.x < margin || this.pos.x > width - margin) {
-        this.vel.x *= -0.8;
-        this.pos.x = constrain(this.pos.x, margin, width - margin);
-      }
-
-      // 地面碰撞
-      if (this.pos.y >= groundY - 18) {
-        this.pos.y = groundY - 18;
-        this.vel.set(0, 0);
-        this.isJumping = false;
-        this.angle = 0;
-      }
-
-      // 台阶碰撞：找正下方最近的台阶
-      if (this.vel.y > 0) {
-        let best = null;
-        for (let p of platforms) {
-          if (p.y > this.pos.y &&
-              this.pos.x > p.x - 5 && this.pos.x < p.x + p.w + 5) {
-            if (!best || p.y < best.y) best = p;
-          }
-        }
-        if (best && this.pos.y >= best.y - 20) {
-          this.pos.y = best.y;
-          this.vel.set(0, 0);
-          this.isJumping = false;
-          this.angle = 0;
-        }
+class Cat{
+  constructor(){this.reset();}
+  reset(){this.pos=createVector(width/2,groundY-18);this.vel=createVector(0,0);this.gravity=0.5;this.isJumping=false;this.angle=0;}
+  jump(f){this.vel=f;this.isJumping=true;}
+  update(){
+    if(this.isJumping){
+      this.vel.y+=this.gravity;this.pos.add(this.vel);this.angle=this.vel.heading()+HALF_PI;
+      let m=max(12,width*0.03);
+      if(this.pos.x<m||this.pos.x>width-m){this.vel.x*=-0.8;this.pos.x=constrain(this.pos.x,m,width-m);}
+      if(this.pos.y>=groundY-18){this.pos.y=groundY-18;this.vel.set(0,0);this.isJumping=false;this.angle=0;}
+      if(this.vel.y>0){
+        let best=null;
+        for(let p of platforms){if(p.y>this.pos.y&&this.pos.x>p.x-5&&this.pos.x<p.x+p.w+5){if(!best||p.y<best.y)best=p;}}
+        if(best&&this.pos.y>=best.y-20){this.pos.y=best.y;this.vel.set(0,0);this.isJumping=false;this.angle=0;}
       }
     }
   }
-  display() {
-    push();
-    translate(this.pos.x, this.pos.y);
-    rotate(this.angle);
-    fill(40); noStroke();
-    rectMode(CENTER);
-    rect(0, -10, 32, 28, 8);
-    triangle(-14, -20, -10, -32, -4, -20);
-    triangle(14, -20, 10, -32, 4, -20);
-    fill(255); ellipse(-7, -12, 3, 3); ellipse(7, -12, 3, 3);
+  display(){
+    let s=SKINS[currentSkin];
+    push();translate(this.pos.x,this.pos.y);rotate(this.angle);
+    // 恶魔猫小翅膀
+    if(currentSkin===1){
+      fill(100,20,20);noStroke();
+      triangle(-18,-10,-34,-22,-22,4);
+      triangle(18,-10,34,-22,22,4);
+    }
+    // 天使猫羽毛小翅膀
+    if(currentSkin===2){
+      fill(255,255,255);stroke(220,225,255);strokeWeight(0.8);
+      // 左翅膀 - 圆润羽翼
+      beginShape();vertex(-18,-4);
+      bezierVertex(-20,-14,-28,-22,-34,-16);
+      bezierVertex(-38,-6,-30,2,-22,4);
+      bezierVertex(-20,0,-18,-2,-18,-4);
+      endShape(CLOSE);
+      // 右翅膀
+      beginShape();vertex(18,-4);
+      bezierVertex(20,-14,28,-22,34,-16);
+      bezierVertex(38,-6,30,2,22,4);
+      bezierVertex(20,0,18,-2,18,-4);
+      endShape(CLOSE);
+      noStroke();
+    }
+    // 草莓猫 - 绿色身体 + 头顶小草莓🍓
+    if(currentSkin===3){
+      fill(s.body[0],s.body[1],s.body[2]);noStroke();rectMode(CENTER);rect(0,-10,32,28,8);
+      // 草莓 - 红色果身（倒三角心形）
+      fill(255,60,80);noStroke();
+      beginShape();vertex(0,-38);vertex(-7,-28);vertex(-5,-24);vertex(0,-22);vertex(5,-24);vertex(7,-28);endShape(CLOSE);
+      // 草莓籽
+      fill(255,220,100);noStroke();
+      ellipse(-3,-27,1.2,1.2);ellipse(3,-27,1.2,1.2);ellipse(0,-25,1.2,1.2);ellipse(-4,-24.5,1,1);ellipse(4,-24.5,1,1);
+      // 绿色叶子
+      fill(80,200,100);noStroke();
+      beginShape();vertex(0,-33);vertex(-4,-37);vertex(-1,-34);vertex(0,-38);vertex(1,-34);vertex(4,-37);endShape(CLOSE);
+    }else{
+      fill(s.body[0],s.body[1],s.body[2]);noStroke();rectMode(CENTER);rect(0,-10,32,28,8);
+    }
+    // 耳朵
+    fill(s.ear[0],s.ear[1],s.ear[2]);
+    triangle(-14,-20,-10,-32,-4,-20);triangle(14,-20,10,-32,4,-20);
+    // 眼睛
+    fill(s.eye[0],s.eye[1],s.eye[2]);ellipse(-7,-12,3,3);ellipse(7,-12,3,3);
+    // 魔法师猫 - 深蓝身体 + 巫师帽(圣诞帽大小)✨ + 星星眼
+    if(currentSkin===4){
+      // 巫师帽 - 深蓝色，大小和圣诞帽一模一样
+      fill(25,25,80);noStroke();
+      beginShape();vertex(-6,-26);vertex(0,-48);vertex(8,-24);endShape(CLOSE);
+      // 帽檐
+      fill(35,35,100);arc(0,-24,22,10,0,PI);
+      // 帽顶星星装饰 ⭐
+      fill(255,220,50);noStroke();
+      push();translate(2,-36);scale(0.5);
+      beginShape();for(let s=0;s<10;s++){let r=s%2===0?4:1.5,a=s*PI/5-PI/2;vertex(cos(a)*r,sin(a)*r);}endShape(CLOSE);
+      pop();
+      // 星星眼
+      fill(255,200,50);noStroke();
+      push();translate(-7,-12);scale(0.45);
+      beginShape();for(let s=0;s<10;s++){let r=s%2===0?4:1.5,a=s*PI/5-PI/2;vertex(cos(a)*r,sin(a)*r);}endShape(CLOSE);
+      pop();
+      push();translate(7,-12);scale(0.45);
+      beginShape();for(let s=0;s<10;s++){let r=s%2===0?4:1.5,a=s*PI/5-PI/2;vertex(cos(a)*r,sin(a)*r);}endShape(CLOSE);
+      pop();
+      // 魔法粒子飘浮
+      if(frameCount%2===0){
+        let px=random(-18,18),py=random(-40,5);
+        fill(255,220,50,180);noStroke();ellipse(px,py,2,2);
+        fill(150,180,255,150);ellipse(px+random(-5,5),py+random(-5,5),1.5,1.5);
+      }
+    }
+    // 天使猫浮空光环
+    if(currentSkin===2){
+      fill(255,230,120,180);noStroke();ellipse(0,-36,26,8);
+      stroke(255,220,80,200);strokeWeight(1.5);noFill();ellipse(0,-36,26,8);
+      noStroke();
+    }
     pop();
   }
 }
 
-// ── 主循环 ────────────────────────────────────────
-function draw() {
-  background(248, 248, 245);
-
-  // 摄像机跟随
-  let thresholdTop = height * 0.35;
-  let thresholdBottom = height * 0.85;
-
-  if (cat.pos.y < cameraY + thresholdTop)
-    cameraY = lerp(cameraY, cat.pos.y - thresholdTop, 0.1);
-  else if (cat.pos.y > cameraY + thresholdBottom)
-    cameraY = lerp(cameraY, cat.pos.y - thresholdBottom, 0.1);
-
-  cameraY = min(cameraY, 0);
-
-  push();
-  translate(0, -cameraY);
-
-  drawGround();
-
-  for (let p of platforms) p.display();
-
-  // 动态补路
-  let highestP = platforms[platforms.length - 1].y;
-  if (cat.pos.y < highestP + height) {
-    for (let i = 1; i <= 5; i++) addPlatform(highestP - i * 140);
+function drawStar(x,y,r1,r2,n){
+  let a=TWO_PI/n,h=HALF_PI-PI;
+  beginShape();
+  for(let i=0;i<n*2;i++){
+    let r=i%2===0?r2:r1,ang=a*i/2+h;
+    vertex(x+cos(ang)*r,y+sin(ang)*r);
   }
-
-  if (isDragging && !cat.isJumping) drawTrajectory();
-
-  cat.update();
-  cat.display();
-  pop();
-
-  drawTitleBar();
-  drawUI();
-  drawControlArea();
+  endShape(CLOSE);
 }
 
-function drawGround() {
-  push();
-  noStroke(); fill(210, 205, 200);
-  rect(0, groundY, width, 5000);
-  stroke(180);
-  for (let i = 0; i < width; i += 30) {
-    line(i, groundY, i + 15, groundY + 15);
-    line(i + 15, groundY, i, groundY + 15);
+function getCurrentHeight(){return floor(max(0,-cat.pos.y+groundY)/10);}
+
+function checkTargets(){
+  let h=getCurrentHeight();
+  for(let i=0;i<TARGETS.length;i++){
+    let t=TARGETS[i];if(!t.unlocked&&h>=t.meters){t.unlocked=true;if(!unlockedSkins.includes(i+1))unlockedSkins.push(i+1);currentSkin=i+1;notifiedTargets.push({index:i,timer:180});}
   }
-  pop();
 }
 
-function drawTrajectory() {
-  let force = p5.Vector.sub(dragStart, createVector(mouseX, mouseY)).limit(75).mult(0.4);
-  push();
-  stroke(160, 130);
-  drawingContext.setLineDash([5, 5]);
-  let tPos = cat.pos.copy(), tVel = force.copy();
-  for (let i = 0; i < 20; i++) {
-    let nextPos = p5.Vector.add(tPos, tVel);
-    line(tPos.x, tPos.y, nextPos.x, nextPos.y);
-    tPos = nextPos; tVel.y += 0.5;
+// ── 主循环 ────────────────────────────────────
+function draw(){
+  background(248,248,245);
+  let tt=height*0.35,tb=height*0.85;
+  if(cat.pos.y<cameraY+tt)cameraY=lerp(cameraY,cat.pos.y-tt,0.1);else if(cat.pos.y>cameraY+tb)cameraY=lerp(cameraY,cat.pos.y-tb,0.1);
+  cameraY=min(cameraY,0);
+  push();translate(0,-cameraY);
+  drawGround();drawTargetLines();
+  for(let p of platforms)p.display();
+  let lp=platforms[platforms.length-1].y;if(cat.pos.y<lp+height){for(let i=1;i<=5;i++)addPlatform(lp-i*140);}
+  if(isDragging&&!cat.isJumping)drawTrajectory();
+  checkTargets();cat.update();cat.display();
+  pop();
+
+  drawTitleBar();drawUI();drawControlArea();drawNotifications();
+  if(showSkinPanel)drawSkinPanel();
+}
+
+function drawGround(){
+  push();noStroke();fill(210,205,200);rect(0,groundY,width,5000);stroke(180);
+  for(let i=0;i<width;i+=30){line(i,groundY,i+15,groundY+15);line(i+15,groundY,i,groundY+15);}pop();
+}
+
+function drawTargetLines(){
+  for(let i=0;i<TARGETS.length;i++){
+    let t=TARGETS[i],y=groundY-t.meters*10;
+    push();stroke(t.color[0],t.color[1],t.color[2]);strokeWeight(2);drawingContext.setLineDash([10,8]);line(0,y,width,y);drawingContext.setLineDash([]);
+    noStroke();fill(t.color[0],t.color[1],t.color[2]);
+    let lw=min(width*0.28,90),lh=max(20,height*0.032);
+    rect(8,y-lh+2,lw,lh,4);fill(255);noStroke();textAlign(LEFT,CENTER);textSize(min(lh*0.6,13));text(t.label,14,y-lh/2+2);
+    if(t.unlocked){fill(t.color[0],t.color[1],t.color[2]);noStroke();ellipse(width-20,y,10,10);}
+    pop();
   }
+}
+
+function drawTrajectory(){
+  let f=p5.Vector.sub(dragStart,createVector(mouseX,mouseY)).limit(75).mult(0.4);
+  push();stroke(160,130);drawingContext.setLineDash([5,5]);
+  let tp=cat.pos.copy(),tv=f.copy();
+  for(let i=0;i<20;i++){let np=p5.Vector.add(tp,tv);line(tp.x,tp.y,np.x,np.y);tp=np;tv.y+=0.5;}
   pop();
 }
 
-// ── 顶部标题栏 ────────────────────────────────────
-function drawTitleBar() {
-  fill(240, 235, 230);
-  noStroke();
-  rect(0, 0, width, titleH);
-  fill(50);
-  textAlign(CENTER, CENTER);
-  textSize(Math.min(titleH * 0.48, 20));
-  textFont("PingFang SC, Microsoft YaHei, sans-serif");
-  text("jumpcattttt", width / 2, titleH / 2);
+// ── 标题栏 ────────────────────────────────────
+function drawTitleBar(){
+  fill(240,235,230);noStroke();rect(0,0,width,titleH);
+  fill(50);textAlign(CENTER,CENTER);textSize(min(titleH*0.48,20));text("jumpcattttt",width/2,titleH/2);
+
+  // 右侧皮肤按钮
+  let sw=Math.min(60,width*0.16),sh=max(22,titleH*0.55);
+  push();rectMode(CORNER);textAlign(CENTER,CENTER);
+  fill(180,200,255);noStroke();rect(width-sw-10,(titleH-sh)/2,sw,sh,6);
+  fill(50);textSize(min(sh*0.5,11));text("皮肤",width-sw-10+sw/2,(titleH-sh)/2+sh/2);
+  pop();
+
 }
 
-// ── 高度 UI ──────────────────────────────────────
-function drawUI() {
-  let hVal = floor(max(0, -cat.pos.y + groundY) / 10);
-  fill(120); noStroke(); textAlign(RIGHT, CENTER);
-  textSize(min(width * 0.042, 16));
-  text("高度 " + hVal + " m", width - 16, titleH / 2);
+// ── 高度 UI ───────────────────────────────────
+function drawUI(){
+  let hv=getCurrentHeight();fill(120);noStroke();textAlign(RIGHT,CENTER);textSize(min(width*0.042,16));
+  text("高度 "+hv+" m",width-80,titleH/2);
+  let nt=null;
+  for(let t of TARGETS){if(!t.unlocked){nt=t;break;}}
+  if(nt){fill(150);textSize(min(width*0.032,12));text("下一站: "+nt.label,width-80,titleH/2+16);}
+  else{fill(160,120,255);textSize(min(width*0.032,12));text("全部解锁！",width-80,titleH/2+16);}
 }
 
-// ── 底部操作区 ────────────────────────────────────
-function drawControlArea() {
+// ── 底部操作区 ───────────────────────────────
+function drawControlArea(){
   push();
-  let cy = height - controlH / 2;
-
-  // 分隔线
-  stroke(200); strokeWeight(1);
-  line(10, height - controlH - 3, width - 10, height - controlH - 3);
-
-  // 背景色带
-  noStroke();
-  fill(236, 232, 228);
-  rect(0, height - controlH, width, controlH);
-
-  // 提示文字
-  fill(140);
-  textAlign(CENTER, CENTER);
-  textSize(min(controlH * 0.28, 15));
-  textFont("PingFang SC, sans-serif");
-
-  if (!cat.isJumping) {
-    // 蓄力提示
-    fill(100);
-    text("按住屏幕拖拽蓄力 → 松开起跳", width / 2, cy - 6);
-
-    // 力度条背景
-    let barW = min(width * 0.65, 260);
-    let barH = min(controlH * 0.22, 12);
-    let bx = width / 2 - barW / 2;
-    let by = cy + controlH * 0.18;
-
-    fill(220);
-    rect(bx, by, barW, barH, barH / 2);
-
-    // 如果正在拖拽，显示力度
-    if (isDragging && dragStart) {
-      let dist = p5.Vector.dist(dragStart, createVector(mouseX, mouseY));
-      let power = constrain(dist / 75, 0, 1);
-      let r = power;
-      let g = 1 - power;
-      fill(r * 200 + 55, g * 200 + 55, 90);
-      rect(bx, by, barW * power, barH, barH / 2);
+  stroke(200);strokeWeight(1);line(10,height-controlH-3,width-10,height-controlH-3);
+  noStroke();fill(236,232,228);rect(0,height-controlH,width,controlH);
+  textAlign(CENTER,CENTER);
+  if(!cat.isJumping){
+    fill(100);textSize(min(controlH*0.28,15));text("按住屏幕拖拽蓄力 → 松开起跳",width/2,height-controlH/2-6);
+    let bw=min(width*0.65,260),bh=min(controlH*0.22,12),bx=width/2-bw/2,by=height-controlH/2+controlH*0.18;
+    fill(220);rect(bx,by,bw,bh,bh/2);
+    if(isDragging&&dragStart){
+      let power=constrain(p5.Vector.dist(dragStart,createVector(mouseX,mouseY))/75,0,1);
+      fill(power*200+55,(1-power)*200+55,90);rect(bx,by,bw*power,bh,bh/2);
     }
-  } else {
-    fill(150);
-    text("跳跃中...", width / 2, cy);
-  }
-
+  }else{fill(150);textSize(min(controlH*0.28,15));text("跳跃中...",width/2,height-controlH/2);}
   pop();
 }
 
+// ── 里程碑通知 ───────────────────────────────
+function drawNotifications(){
+  for(let i=notifiedTargets.length-1;i>=0;i--){
+    let n=notifiedTargets[i];n.timer--;
+    if(n.timer<=0){notifiedTargets.splice(i,1);continue;}
+    let t=TARGETS[n.index],a=n.timer>60?255:map(n.timer,0,60,0,255);
+    push();
+    let bw=min(width*0.8,300),bh=max(70,height*0.1),bx=(width-bw)/2,by=titleH+20+(TARGETS.length-1-n.index)*(bh+10);
+    fill(255,a);stroke(t.color[0],t.color[1],t.color[2],a);strokeWeight(2);rect(bx,by,bw,bh,12);
+    noStroke();fill(t.color[0],t.color[1],t.color[2],a);textAlign(CENTER,CENTER);textSize(min(bh*0.25,16));
+    text("\u{1F389} \u91CC\u7A0B\u7891\u8FBE\u6210!",bx+bw/2,by+bh*0.3);
+    fill(50,a);textSize(min(bh*0.2,13));
+    text("\u5230\u8FBE "+t.label+"\uFF0C\u89E3\u9501 "+SKINS[n.index+1].name,bx+bw/2,by+bh*0.6);
+    fill(100,a);textSize(min(bh*0.16,11));
+    text("\u5DF2\u81EA\u52A8\u6362\u80A4",bx+bw/2,by+bh*0.85);
+    pop();
+  }
+}
+
+// ── 皮肤选择面板 ─────────────────────────────
+function drawSkinPanel(){
+  push();fill(0,0,0,160);rect(0,0,width,height);
+  let pw=min(width*0.88,340),ph=min(height*0.55,360),px=(width-pw)/2,py=(height-ph)/2;
+  fill(250,245,240);stroke(200);strokeWeight(1);rect(px,py,pw,ph,14);
+  noStroke();fill(50);textAlign(CENTER,CENTER);textSize(min(pw*0.06,17));text("\u9009\u62E9\u76AE\u80A4",px+pw/2,py+30);
+  // 关闭
+  fill(200);noStroke();rect(px+pw-38,py+10,28,28,6);fill(80);textSize(14);text("\u2715",px+pw-24,py+24);
+  // 列表
+  let cols=min(3,floor(pw/90)),iw=80,ih=90,gx=(pw-cols*iw)/(cols+1),gy=14,sy=py+55;
+  for(let i=0;i<SKINS.length;i++){
+    let s=SKINS[i],col=i%cols,row=floor(i/cols),ix=px+gx+col*(iw+gx),iy=sy+row*(ih+gy),ok=unlockedSkins.includes(i),cur=(currentSkin===i);
+    if(cur){fill(180,210,255);stroke(80,130,220);strokeWeight(2);}else if(ok){fill(255);stroke(200);strokeWeight(1);}else{fill(220);noStroke();}
+    rect(ix,iy,iw,ih,8);
+    if(ok){
+      push();translate(ix+iw/2,iy+ih*0.55);noStroke();
+      // 身体
+      if(i===3){
+        // 草莓猫 - 绿色身体
+        fill(s.body[0],s.body[1],s.body[2]);rectMode(CENTER);rect(0,-4,26,22,6);
+      }else{
+        fill(s.body[0],s.body[1],s.body[2]);rectMode(CENTER);rect(0,-4,26,22,6);
+      }
+      // 恶魔猫翅膀
+      if(i===1){fill(100,20,20);noStroke();triangle(-18,-6,-32,-16,-22,6);triangle(18,-6,32,-16,22,6);}
+      // 天使猫翅膀 + 光环
+      if(i===2){fill(255,255,255);stroke(220,225,255);strokeWeight(0.6);
+        beginShape();vertex(-14,-2);bezierVertex(-16,-10,-22,-16,-27,-12);bezierVertex(-30,-4,-24,1,-17,3);bezierVertex(-15,1,-14,0,-14,-2);endShape(CLOSE);
+        beginShape();vertex(14,-2);bezierVertex(16,-10,22,-16,27,-12);bezierVertex(30,-4,24,1,17,3);bezierVertex(15,1,14,0,14,-2);endShape(CLOSE);
+        noStroke();fill(255,230,120,180);noStroke();ellipse(0,-26,20,6);stroke(255,220,80,200);strokeWeight(1);noFill();ellipse(0,-26,20,6);noStroke();}
+      // 耳朵（先画通用耳朵）
+      fill(s.ear[0],s.ear[1],s.ear[2]);noStroke();
+      triangle(-11,-12,-8,-22,-3,-12);triangle(11,-12,8,-22,3,-12);
+      // 眼睛（草莓猫正常眼 / 圣诞猫圣诞帽+围巾）
+      if(i===3){
+        // 草莓
+        fill(255,60,80);noStroke();
+        beginShape();vertex(0,-25);vertex(-5,-18);vertex(-3.5,-15);vertex(0,-14);vertex(3.5,-15);vertex(5,-18);endShape(CLOSE);
+        fill(255,220,100);noStroke();
+        ellipse(-2,-17,1,1);ellipse(2,-17,1,1);ellipse(0,-15.5,1,1);ellipse(-3,-15,0.8,0.8);ellipse(3,-15,0.8,0.8);
+        fill(80,200,100);noStroke();
+        beginShape();vertex(0,-22);vertex(-3,-25);vertex(-1,-22.5);vertex(0,-25.5);vertex(1,-22.5);vertex(3,-25);endShape(CLOSE);
+      }else if(i===4){
+        // 巫师帽（和圣诞猫帽子一样大）
+        fill(25,25,80);noStroke();
+        beginShape();vertex(-4,-16);vertex(0,-28);vertex(6,-15);endShape(CLOSE);
+        fill(35,35,100);arc(0,-14,15,7,0,PI);
+        // 帽顶小星星 ⭐
+        fill(255,220,50);push();translate(1,-25);scale(0.3);
+        beginShape();for(let s=0;s<10;s++){let r=s%2===0?4:1.5,a=s*PI/5-PI/2;vertex(cos(a)*r,sin(a)*r);}endShape(CLOSE);pop();
+        noStroke();
+        // 星星眼
+        fill(255,200,50);push();translate(-5,-7);scale(0.35);
+        beginShape();for(let s=0;s<10;s++){let r=s%2===0?4:1.5,a=s*PI/5-PI/2;vertex(cos(a)*r,sin(a)*r);}endShape(CLOSE);pop();
+        push();translate(5,-7);scale(0.35);
+        beginShape();for(let s=0;s<10;s++){let r=s%2===0?4:1.5,a=s*PI/5-PI/2;vertex(cos(a)*r,sin(a)*r);}endShape(CLOSE);pop();
+      }
+      if(i!==4){
+        fill(s.eye[0],s.eye[1],s.eye[2]);ellipse(-5,-7,2.5,2.5);ellipse(5,-7,2.5,2.5);
+      }else{
+        fill(s.eye[0],s.eye[1],s.eye[2]);ellipse(-5,-7,2.5,2.5);ellipse(5,-7,2.5,2.5);
+      }
+      pop();
+      noStroke();fill(50);textAlign(CENTER,CENTER);textSize(10);text(s.name,ix+iw/2,iy+14);
+      if(cur){fill(80,130,220);noStroke();ellipse(ix+iw-12,iy+12,14,14);fill(255);textSize(9);text("\u2713",ix+iw-12,iy+12);}
+    }else{
+      fill(150);textAlign(CENTER,CENTER);textSize(11);text("\uD83D\uDD12",ix+iw/2,iy+ih/2-8);
+      fill(160);textSize(9);
+      text(i===1?'1000m':i===2?'3000m':i===3?'6000m':'10000m',ix+iw/2,iy+ih/2+10);
+    }
+  }
+  pop();
+}
 </script>
 </body>
 </html>

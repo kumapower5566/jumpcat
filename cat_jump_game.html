@@ -99,11 +99,10 @@ function teleportTo(meters){
 // ── 事件处理 ──────────────────────────────────
 function onDragStart(e){
   let p=getCanvasPos(e);
-  if(handleSkinPanelClick(p.x,p.y))return;
-  if(handleTeleportPanelClick(p.x,p.y))return;
+    if(handleSkinPanelClick(p.x,p.y))return;
 
-  let sw=Math.min(60,width*0.16),sh=max(22,titleH*0.55),sx=width-sw-10;
-  if(hitBtn(p.x,p.y,sx,(titleH-sh)/2,sw,sh)){showSkinPanel=!showSkinPanel;showTeleportPanel=false;return;}
+    let sw=Math.min(60,width*0.16),sh=max(22,titleH*0.55),sx=width-sw-10;
+    if(hitBtn(p.x,p.y,sx,(titleH-sh)/2,sw,sh)){showSkinPanel=!showSkinPanel;return;}
 
 
   if(isInControlArea(p.y))return;
@@ -121,10 +120,8 @@ function onTouchStart(e){
   if(e.touches.length>0){
     let p=getCanvasPos(e.touches[0]);mouseX=p.x;mouseY=p.y;
     if(handleSkinPanelClick(p.x,p.y))return;
-    if(handleTeleportPanelClick(p.x,p.y))return;
-
     let sw=Math.min(60,width*0.16),sh=Math.max(22,titleH*0.55),sx=width-sw-10;
-    if(hitBtn(p.x,p.y,sx,(titleH-sh)/2,sw,sh)){showSkinPanel=!showSkinPanel;showTeleportPanel=false;return;}
+    if(hitBtn(p.x,p.y,sx,(titleH-sh)/2,sw,sh)){showSkinPanel=!showSkinPanel;return;}
 
     if(isInControlArea(p.y))return;
     if(!cat.isJumping){dragStart=createVector(p.x,p.y);isDragging=true;}
